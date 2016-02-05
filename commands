@@ -61,58 +61,53 @@ case "$1" in
     verify_service_name "$2"
     SERVICE="$2"; SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
     SERVICE_NAME="$(get_service_name "$SERVICE")"
-    PASSWORD=$(cat "$SERVICE_ROOT/PASSWORD")
-    ROOTPASSWORD=$(cat "$SERVICE_ROOT/ROOTPASSWORD")
 
+    shift
 
-    if [[ "$3" =~ $regex ]]; then
+    if [[ "$2" =~ $regex ]]; then
 
-      service_stop "$2" || true
+      service_stop "$SERVICE" || true
 
-      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c 'rm /var/lib/mysql -Rf 2> /dev/null || true'
-      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -O- $3 | tar -Ipixz --verbose -xf -"
+      dokku_log_verbose_quiet "Delete old files"
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "rm /var/lib/mysql -Rf 2> /dev/null || true"
+      dokku_log_verbose_quiet "Restore files from backup"
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -qO- $2 | tar -Ipixz -xf -"
 
-      service_start "$2"
+      service_start "$SERVICE"
 
-      if [ "$4" = "reset" ]; then
-
-        change_password $SERVICE $5 $ROOTPASSWORD
-      elif [ "$4" = "rename" ]; then
-        [[ -z $5 ]] && dokku_log_fail "Please specify the old database name"
-
-        rename_db $SERVICE $PASSWORD $ROOTPASSWORD $5
-
-        if [ "$6" = "reset" ]; then
-          change_password $SERVICE $8 $ROOTPASSWORD
-        fi
-      fi
     else
-
       if [[ -t 0 ]]; then
         dokku_log_fail "No data provided on stdin."
       fi
 
-      service_stop "$2"
+      service_stop "$SERVICE"
 
-      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz rm /var/lib/mysql -Rf > /dev/null
-      docker run -i --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz tar -Ipixz --verbose -xf -
+      dokku_log_verbose_quiet "Delete old files"
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "rm /var/lib/mysql -Rf 2> /dev/null || true"
+      dokku_log_verbose_quiet "Restore files from backup"
+      docker run -i --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz tar -Ipixz -xf -
 
-      service_start "$2"
+      service_start "$SERVICE"
+      dokku_log_verbose_quiet "Waiting for container to be ready"
+      docker run --rm --link "$SERVICE_NAME:$PLUGIN_COMMAND_PREFIX" dokkupaas/wait > /dev/null
 
-      if [ "$3" = "reset" ]; then
-
-        change_password $SERVICE $4 $ROOTPASSWORD
-      elif [ "$3" = "rename" ]; then
-        [[ -z $4 ]] && dokku_log_fail "Please specify the old database name"
-
-        rename_db $SERVICE $PASSWORD $ROOTPASSWORD $4
-
-        if [ "$5" = "reset" ]; then
-          change_password $SERVICE $6 $ROOTPASSWORD
-        fi
-      fi
     fi
 
+    if [ "$2" = "reset" ]; then
+      oldpw="$3"
+      [[ -z $3 ]] && echo "No password provided, trying without password!" || shift
+      shift
+
+      change_password $SERVICE $oldpw
+    fi
+
+    if [ "$2" = "rename" ]; then
+      shift
+      [[ -z $2 ]] && dokku_log_fail "Please specify the old database name"
+
+      rename_db $SERVICE "$2"
+      shift
+    fi
     ;;
 
   $PLUGIN_COMMAND_PREFIX:takeSnapshot)
