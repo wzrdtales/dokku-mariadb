@@ -73,9 +73,6 @@ case "$1" in
       dokku_log_verbose_quiet "Restore files from backup"
       docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -qO- $2 | tar -Ipixz -xf -"
       shift
-
-      service_start "$SERVICE"
-
     else
       if [[ -t 0 ]]; then
         dokku_log_fail "No data provided on stdin."
@@ -87,12 +84,11 @@ case "$1" in
       docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "rm /var/lib/mysql -Rf 2> /dev/null || true"
       dokku_log_verbose_quiet "Restore files from backup"
       docker run -i --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz tar -Ipixz -xf -
-
-      service_start "$SERVICE"
-      dokku_log_verbose_quiet "Waiting for container to be ready"
-      docker run --rm --link "$SERVICE_NAME:$PLUGIN_COMMAND_PREFIX" dokkupaas/wait > /dev/null
-
     fi
+
+    service_start "$SERVICE"
+    dokku_log_verbose_quiet "Waiting for container to be ready"
+    docker run --rm --link "$SERVICE_NAME:$PLUGIN_COMMAND_PREFIX" dokkupaas/wait > /dev/null
 
     if [ "$2" = "reset" ]; then
       if ( [[ -z $3 ]] || [[ -z $5 ]] ); then
