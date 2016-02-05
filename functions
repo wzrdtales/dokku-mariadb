@@ -215,6 +215,27 @@ docker_ports_options() {
   done
 }
 
+change_password() {
+  local SERVICE="$1";
+  local SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
+  local SERVICE_NAME="$(get_service_name "$SERVICE")"
+  echo "UPDATE mysql.user SET password=PASSWORD('$3') WHERE user='root'; FLUSH PRIVILEGES;" | docker exec -i "$SERVICE_NAME" mysql --user=root --password="$2" "$SERVICE"
+}
+
+rename_db() {
+  local SERVICE="$1";
+  local SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
+  local SERVICE_NAME="$(get_service_name "$SERVICE")"
+  local PASSWORD="$2"
+  local ROOTPASSWORD="$3"
+
+  echo "CREATE DATABASE IF NOT EXISTS \`$SERVICE\` ; GRANT ALL ON \`$SERVICE\`.* to 'mariadb'@'%' identified by '$PASSWORD';" | docker exec -i "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" "$SERVICE"
+
+  for table in `docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -s -N -e "show tables from $4"`; do
+    docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -s -N -e "rename table \`$4\`.$table to \`$SERVICE\`.$table";
+  done;
+}
+
 service_start() {
   local SERVICE="$1"
   local SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"

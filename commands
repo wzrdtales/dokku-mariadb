@@ -53,6 +53,84 @@ case "$1" in
     dokku "$PLUGIN_COMMAND_PREFIX:info" "$SERVICE"
     ;;
 
+  $PLUGIN_COMMAND_PREFIX:restoreSnapshop)
+    [[ -z $2 ]] && dokku_log_fail "Please specify a name for the service"
+    [[ -d "$PLUGIN_DATA_ROOT/$2" ]] || dokku_log_fail "$PLUGIN_SERVICE service $2 data root is missing"
+    regex='(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
+
+    verify_service_name "$2"
+    SERVICE="$2"; SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
+    SERVICE_NAME="$(get_service_name "$SERVICE")"
+    PASSWORD=$(cat "$SERVICE_ROOT/PASSWORD")
+    ROOTPASSWORD=$(cat "$SERVICE_ROOT/ROOTPASSWORD")
+
+
+    if [[ "$3" =~ $regex ]]; then
+
+      service_stop "$2"
+
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz rm /var/lib/mysql -Rf > /dev/null
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -qO- $3 | pixz -x | tar xfv"
+
+      service start "$2"
+
+      if [ "$4" = "reset" ]; then
+
+        change_password $SERVICE $5 $ROOTPASSWORD
+      elif [ "$4" = "rename" ]; then
+        [[ -z $5 ]] && dokku_log_fail "Please specify the old database name"
+
+        rename_db $SERVICE $PASSWORD $ROOTPASSWORD $5
+
+        if [ "$6" = "reset" ]; then
+          change_password $SERVICE $8 $ROOTPASSWORD
+        fi
+      else
+
+        if [[ -t 0 ]]; then
+          dokku_log_fail "No data provided on stdin."
+        fi
+
+        service_stop "$2"
+
+        docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz rm /var/lib/mysql -Rf > /dev/null
+        docker run -i --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz tar -Ipixz --verbose -xf -
+
+        service start "$2"
+
+        if [ "$3" = "reset" ]; then
+
+          change_password $SERVICE $4 $ROOTPASSWORD
+        elif [ "$3" = "rename" ]; then
+          [[ -z $4 ]] && dokku_log_fail "Please specify the old database name"
+
+          rename_db $SERVICE $PASSWORD $ROOTPASSWORD $4
+
+          if [ "$5" = "reset" ]; then
+            change_password $SERVICE $6 $ROOTPASSWORD
+          fi
+        fi
+      fi
+    fi
+    ;;
+
+  $PLUGIN_COMMAND_PREFIX:takeSnapshot)
+    [[ -z $2 ]] && dokku_log_fail "Please specify a name for the service"
+    [[ -d "$PLUGIN_DATA_ROOT/$2" ]] || dokku_log_fail "$PLUGIN_SERVICE service $2 data root is missing"
+
+    verify_service_name "$2"
+    SERVICE="$2"; SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
+    SERVICE_NAME="$(get_service_name "$SERVICE")"
+
+    service_stop "$2" > /dev/null
+
+    [[ -n $SSH_TTY ]] && stty -opost
+    docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c 'tar cf - /var/lib/mysql 2> /dev/null | pixz | cat'
+    [[ -n $SSH_TTY ]] && stty opost
+
+    service_start "$2" > /dev/null
+    ;;
+
   $PLUGIN_COMMAND_PREFIX:destroy)
     [[ -z $2 ]] && dokku_log_fail "Please specify a name for the service"
     verify_service_name "$2"
