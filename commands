@@ -53,7 +53,7 @@ case "$1" in
     dokku "$PLUGIN_COMMAND_PREFIX:info" "$SERVICE"
     ;;
 
-  $PLUGIN_COMMAND_PREFIX:restoreSnapshop)
+  $PLUGIN_COMMAND_PREFIX:restoreSnapshot)
     [[ -z $2 ]] && dokku_log_fail "Please specify a name for the service"
     [[ -d "$PLUGIN_DATA_ROOT/$2" ]] || dokku_log_fail "$PLUGIN_SERVICE service $2 data root is missing"
     regex='(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
@@ -67,12 +67,12 @@ case "$1" in
 
     if [[ "$3" =~ $regex ]]; then
 
-      service_stop "$2"
+      service_stop "$2" || true
 
-      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz rm /var/lib/mysql -Rf > /dev/null
-      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -qO- $3 | pixz -x | tar xfv"
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c 'rm /var/lib/mysql -Rf 2> /dev/null || true'
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -O- $3 | tar -Ipixz --verbose -xf -"
 
-      service start "$2"
+      service_start "$2"
 
       if [ "$4" = "reset" ]; then
 
@@ -85,33 +85,34 @@ case "$1" in
         if [ "$6" = "reset" ]; then
           change_password $SERVICE $8 $ROOTPASSWORD
         fi
-      else
+      fi
+    else
 
-        if [[ -t 0 ]]; then
-          dokku_log_fail "No data provided on stdin."
-        fi
+      if [[ -t 0 ]]; then
+        dokku_log_fail "No data provided on stdin."
+      fi
 
-        service_stop "$2"
+      service_stop "$2"
 
-        docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz rm /var/lib/mysql -Rf > /dev/null
-        docker run -i --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz tar -Ipixz --verbose -xf -
+      docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz rm /var/lib/mysql -Rf > /dev/null
+      docker run -i --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz tar -Ipixz --verbose -xf -
 
-        service start "$2"
+      service_start "$2"
 
-        if [ "$3" = "reset" ]; then
+      if [ "$3" = "reset" ]; then
 
-          change_password $SERVICE $4 $ROOTPASSWORD
-        elif [ "$3" = "rename" ]; then
-          [[ -z $4 ]] && dokku_log_fail "Please specify the old database name"
+        change_password $SERVICE $4 $ROOTPASSWORD
+      elif [ "$3" = "rename" ]; then
+        [[ -z $4 ]] && dokku_log_fail "Please specify the old database name"
 
-          rename_db $SERVICE $PASSWORD $ROOTPASSWORD $4
+        rename_db $SERVICE $PASSWORD $ROOTPASSWORD $4
 
-          if [ "$5" = "reset" ]; then
-            change_password $SERVICE $6 $ROOTPASSWORD
-          fi
+        if [ "$5" = "reset" ]; then
+          change_password $SERVICE $6 $ROOTPASSWORD
         fi
       fi
     fi
+
     ;;
 
   $PLUGIN_COMMAND_PREFIX:takeSnapshot)
