@@ -316,6 +316,9 @@ case "$1" in
     $PLUGIN_COMMAND_PREFIX:start <name>, Start a previously stopped $PLUGIN_SERVICE service
     $PLUGIN_COMMAND_PREFIX:stop <name>, Stop a running $PLUGIN_SERVICE service
     $PLUGIN_COMMAND_PREFIX:promote <name> <app>, Promote service <name> as ${PLUGIN_DEFAULT_ALIAS}_URL in <app>
+    $PLUGIN_COMMAND_PREFIX:restoreSnapshot <name> [reset password [rename oldname]] [rename oldname] < backup.tar.tpxz, Restores a filesys snapshot to <name>
+    $PLUGIN_COMMAND_PREFIX:restoreSnapshot <name> <url> [reset password [rename oldname]] [rename oldname], Restores a filesys snapshot to <name>
+    $PLUGIN_COMMAND_PREFIX:takeSnapshot <name> > backup.tar.tpxz, Takes a filesys snapshot of <name>
 EOF
 )
     if [[ -n $DOKKU_API_VERSION ]]; then
