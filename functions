@@ -216,6 +216,7 @@ docker_ports_options() {
 }
 
 change_password() {
+
   local SERVICE="$1";
   local SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
   local SERVICE_NAME="$(get_service_name "$SERVICE")"
@@ -223,7 +224,7 @@ change_password() {
   local ROOTPASSWORD=$(cat "$SERVICE_ROOT/ROOTPASSWORD")
 
   echo "Resetting password..."
-  echo "UPDATE mysql.user SET password=PASSWORD('$3') WHERE user='root';
+  echo "UPDATE mysql.user SET password=PASSWORD('$ROOTPASSWORD') WHERE user='root';
   CREATE DATABASE IF NOT EXISTS \`$SERVICE\` ;
   GRANT ALL ON \`$SERVICE\`.* to 'mariadb'@'%' identified by '$PASSWORD';
   FLUSH PRIVILEGES;" |
@@ -233,15 +234,49 @@ change_password() {
 }
 
 rename_db() {
+  echo "rename $1 to $2"
   local SERVICE="$1";
   local SERVICE_ROOT="$PLUGIN_DATA_ROOT/$SERVICE"
   local SERVICE_NAME="$(get_service_name "$SERVICE")"
   local PASSWORD=$(cat "$SERVICE_ROOT/PASSWORD")
   local ROOTPASSWORD=$(cat "$SERVICE_ROOT/ROOTPASSWORD")
+  local TIMESTAMP=`date +%s`
 
-  for table in `docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -s -N -e "show tables from $2"`; do
-    docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -s -N -e "rename table \`$2\`.$table to \`$SERVICE\`.$table";
+  local RENAME='SET FOREIGN_KEY_CHECKS=0'
+  for table in `docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -s -N -e "select TABLE_NAME from information_schema.tables where table_schema='$2' and TABLE_TYPE='BASE TABLE'"`; do
+    RENAME="$RENAME; rename table \`$2\`.$table to \`$SERVICE\`.$table"
   done;
+  RENAME="$RENAME; SET FOREIGN_KEY_CHECKS=1;"
+
+  # This renaming script was partially created through Percona LLC
+  # Copyright 2013 Percona LLC and/or its affiliates
+  local TRIGGERS=`docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" "$2" -e "show triggers" | grep Trigger: | awk '{print $2}'`
+  local VIEWS=`docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -e "select TABLE_NAME from information_schema.tables where table_schema='$2' and TABLE_TYPE='VIEW'" -sss`
+  if [ -n "$VIEWS" ]; then
+    docker exec "$SERVICE_NAME" sh -c "mysqldump --user=root --password='$ROOTPASSWORD' --lock-tables=false '$2' $VIEWS | grep -v '50013 DEFINER' > /tmp/${2}_views${TIMESTAMP}.dump"
+  fi
+
+  docker exec "$SERVICE_NAME" sh -c "mysqldump --user=root --password='$ROOTPASSWORD' --lock-tables=false '$2' -d -t -R -E | grep -v '50013 DEFINER' > /tmp/${2}_triggers${TIMESTAMP}.dump"
+
+  local DELETETRIGGER=''
+  for TRIGGER in $TRIGGERS; do
+    DELETETRIGGER="$DELETETRIGGER drop trigger $TRIGGER;"
+  done
+
+  echo 'Deleting trigger'
+  docker exec "$SERVICE_NAME"  mysql --user=root --password="$ROOTPASSWORD" "$2" -e "$DELETETRIGGER"
+
+  echo 'Renaming'
+  docker exec "$SERVICE_NAME" mysql --user=root --password="$ROOTPASSWORD" -s -N -e "$RENAME";
+
+  if [ -n "$VIEWS" ]; then
+    echo "Loading views"
+    docker exec "$SERVICE_NAME"  sh -c "mysql --user=root --password='$ROOTPASSWORD' $SERVICE < /tmp/${2}_views${TIMESTAMP}.dump"
+    docker exec "$SERVICE_NAME" rm /tmp/${2}_views${TIMESTAMP}.dump
+  fi
+  echo "Loading triggers, routines and events"
+  docker exec "$SERVICE_NAME"  sh -c "mysql --user=root --password='$ROOTPASSWORD' $SERVICE < /tmp/${2}_triggers${TIMESTAMP}.dump"
+  docker exec "$SERVICE_NAME" rm /tmp/${2}_triggers${TIMESTAMP}.dump
 }
 
 service_start() {

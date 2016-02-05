@@ -72,6 +72,7 @@ case "$1" in
       docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "rm /var/lib/mysql -Rf 2> /dev/null || true"
       dokku_log_verbose_quiet "Restore files from backup"
       docker run --rm --volumes-from "$SERVICE_NAME" wzrdtales/pixz sh -c "wget -qO- $2 | tar -Ipixz -xf -"
+      shift
 
       service_start "$SERVICE"
 
@@ -94,8 +95,14 @@ case "$1" in
     fi
 
     if [ "$2" = "reset" ]; then
-      oldpw="$3"
-      [[ -z $3 ]] && echo "No password provided, trying without password!" || shift
+      if ( [[ -z $3 ]] || [[ -z $5 ]] ); then
+
+        echo "No password provided, trying without password!"
+        oldpw=""
+      else
+        oldpw="$3"
+        shift
+      fi
       shift
 
       change_password $SERVICE $oldpw
